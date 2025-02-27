@@ -138,6 +138,8 @@ php artisan serve
 
 
 
+
+
 and finally inside User model add:
 
 public function canLoginDirectly(): bool
