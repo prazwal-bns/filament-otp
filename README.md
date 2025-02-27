@@ -151,7 +151,14 @@ protected $fillable = [
 ];
 ```
 
-4. Update the login behavior to track the login time by modifying the `Login.php` file:
+4. Update the Login.php file within the vendor package:
+
+Find and modify the file at:
+```
+vendor/afsakar/filament-otp-login/src/Filament/Pages/Login.php
+```
+
+Add the code to update the login timestamp in the `doLogin()` method:
 
 ```php
 protected function doLogin(): void
@@ -173,6 +180,7 @@ protected function doLogin(): void
         $this->throwFailureValidationException();
     }
 
+    // Add this line to track the login timestamp
     $user->forceFill(['last_login_at' => now()])->save();
 
     session()->regenerate();
