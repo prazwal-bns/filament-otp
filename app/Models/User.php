@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 
 use Afsakar\FilamentOtpLogin\Models\Contracts\CanLoginDirectly;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -28,7 +29,7 @@ class User extends Authenticatable implements CanLoginDirectly
 
     public function canLoginDirectly(): bool
     {
-        return str($this->email) == 'admin@gmail.com';
+        return $this->last_login_at && Carbon::parse($this->last_login_at)->diffInMinutes(now()) <= 20;
     }
 
     /**

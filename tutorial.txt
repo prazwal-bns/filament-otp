@@ -1,0 +1,162 @@
+Setup one time password (OTP) in filament using Filament OTP login
+
+create a fresh laravel project:
+composer create project laravel/laravel filament-otp --prefer-dist
+
+
+- before we begin:
+- make sure you have setup mailtrap authentication with your mailtrap credentials:
+    - https://mailtrap.io/home
+    - .env configurations:
+        MAIL_MAILER=
+        MAIL_HOST=
+        MAIL_PORT=
+        MAIL_USERNAME=
+        MAIL_PASSWORD=
+
+require filamentOTP plugin
+- composer require afsakar/filament-otp-login
+
+publish and run the migrations with:
+- php artisan vendor:publish --tag="filament-otp-login-migrations"
+- php artisan migrate
+
+if you want to publish the config and translations files :
+- php artisan vendor:publish --tag="filament-otp-login-config"
+- php artisan vendor:publish --tag="filament-otp-login-translations"
+
+
+- Register the Afsakar\FilamentOtpLogin\FilamentOtpLoginPlugin plugin in the your panel provider file.
+
+use Afsakar\FilamentOtpLogin\FilamentOtpLoginPlugin;
+
+    public function panel(Panel $panel): Panel
+    {
+        return $panel
+            ->plugins([
+                FilamentOtpLoginPlugin::make(),
+            ]);
+    }
+
+
+If you want to ignore specific user groups from OTP login just implement the Afsakar\FilamentOtpLogin\Models\Contracts\CanLoginDirectly trait in your User model.
+
+use Afsakar\FilamentOtpLogin\Models\Contracts\CanLoginDirectly;
+
+class User extends Authenticatable implements CanLoginDirectly
+{
+    use HasFactory, Notifiable;
+
+    // other user model code
+
+    public function canLoginDirectly(): bool
+    {
+        return str($this->email)->endsWith('@example.com');
+    }
+}
+
+** this will only ignore specific email address, we can further customize it by adding our custom login behavior
+
+
+For customizing login behavior so that if the user has already logged in once, and we don't want to regenerate OTP again and again .
+We can setup last_login_at column in our users table and modify the behavior
+
+We will customize this behavior by only asking for OTP if it's been more than 20 minutes since the last user logged in
+
+so that if the user has already logged in once we will only ask for otp if it's been more than 20 minutes.
+
+
+- for this we need to create a new column in our users table:
+
+php artisan make:migration add_last_login_at_to_users_table --table=users
+
+public function up()
+{
+    Schema::table('users', function (Blueprint $table) {
+        $table->timestamp('last_login_at')->nullable();
+    });
+}
+
+public function down()
+{
+    Schema::table('users', function (Blueprint $table) {
+        $table->dropColumn('last_login_at');
+    });
+}
+
+
+- make sure you add last_login_at field inside, $fillable:
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'last_login_at'
+    ];
+
+-after that modify  Afsakar\FilamentOtpLogin\Filament\Pages\Login.php file
+add:
+
+     $user->forceFill(['last_login_at' => now()])->save();  // inside doLogin() method
+
+    protected function doLogin(): void
+    {
+        dd('otp login');
+        $data = $this->form->getState();
+
+        if (! Filament::auth()->attempt($this->getCredentialsFromFormData($data), $data['remember'] ?? false)) {
+            $this->throwFailureValidationException();
+        }
+
+        $user = Filament::auth()->user();
+
+        if (
+            ($user instanceof FilamentUser) &&
+            (! $user->canAccessPanel(Filament::getCurrentPanel()))
+        ) {
+            Filament::auth()->logout();
+
+            $this->throwFailureValidationException();
+        }
+
+
+        $user->forceFill(['last_login_at' => now()])->save();
+
+        session()->regenerate();
+    }
+
+
+This extends the default Filament Login class and overrides the doLogin() method to update the last_login_at field.
+
+
+- Clear Cache and Test
+After making these changes, clear the cache and test:
+
+php artisan config:clear
+php artisan cache:clear
+php artisan serve
+
+
+
+
+and finally inside User model add:
+
+public function canLoginDirectly(): bool
+{
+    return $this->last_login_at && Carbon::parse($this->last_login_at)->diffInMinutes(now()) <= 20; // customize 20 minutes to whatever time you want
+}
+
+and test it should work.
+
+
+
+# Additional:
+if you want to to allow reset password functionality, filament provides that feature as well for that all you need to add is:
+
+->passwordReset()
+
+inside your AdminPanelProvider.
+
+Note: Adding passwordReset() alone won't work,
+you will have to :
+- setup mailtrap authentication with your mailtrap credentials
+- also make sue you run : php artisan queue:work command to trigger event so that mail will be sent
